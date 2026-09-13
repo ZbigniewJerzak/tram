@@ -47,3 +47,6 @@ Desktop.ini
 
 # macOS driver
 macOS-driver/
+
+# Display simulator
+displaySim/
