@@ -1,0 +1,7 @@
+{
+  "name": "CrowPanelSupport",
+  "version": "0.1.0",
+  "description": "Hardware support for Elecrow CrowPanel DIE01021S V1.2",
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"]
+}

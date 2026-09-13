@@ -1,0 +1,49 @@
+# PlatformIO
+.pio/
+.pio/build/
+.pio/libdeps/
+.pio/clangd/
+.pio/vscode/
+
+# Build artifacts
+build/
+dist/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+*.dll
+*.out
+*.elf
+*.bin
+*.hex
+
+# Data folder secrets (passwords, API keys, etc.)
+**/data/*.txt
+
+# Temporary and log files
+*.log
+*.tmp
+*.temp
+
+# Editor swap files
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.code-workspace
+
+# macOS driver
+macOS-driver/

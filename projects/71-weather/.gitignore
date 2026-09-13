@@ -1,0 +1,6 @@
+.pio/
+.vscode/
+__pycache__/
+*.pyc
+data/wifi-password.txt
+data/openweather.txt

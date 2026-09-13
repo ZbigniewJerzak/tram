@@ -1,0 +1,16 @@
+{
+  "name": "BvgDepartureCore",
+  "version": "1.1.0",
+  "description": "Shared BVG departure display core: time parsing utilities, layout constants and validation",
+  "keywords": ["bvg", "departure", "display", "epaper"],
+  "authors": [
+    {
+      "name": "BHT Summerschool"
+    }
+  ],
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"],
+  "build": {
+    "srcDir": "src"
+  }
+}
