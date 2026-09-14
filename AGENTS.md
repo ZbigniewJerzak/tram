@@ -444,16 +444,20 @@ Layout ist lokal gebaut, aber noch nicht auf der Hardware bestätigt.
 
 `projects/80-bvg-weather` ist eine vollständige Kopie des aktuellen
 Projekt-71-Stands und ergänzt die zuvor freie linke Fläche um BVG-Daten für
-die Tramhaltestelle Erich-Baron-Weg. Die linke Fläche x=0..527 zeigt in
-Spleen 16×32 die nächsten beiden Abfahrten mit erwarteter Uhrzeit,
-Verspätung, Linie, Countdown und Ziel. Das Wetterpanel bleibt unverändert auf
-x=528..791. Beide Bereiche werden getrennt geclippt.
+die Tramhaltestelle Erich-Baron-Weg. Die linke Fläche x=0..527 zeigt zwei
+Fahrtrichtungen und pro Richtung die nächsten beiden Abfahrten mit erwarteter
+Uhrzeit, Verspätung, Tram-Piktogramm, Linie und Countdown in Spleen 16×32.
+Ziel und aktuelle Fahrzeughaltestelle stehen dazwischen in Spleen 8×16. Die
+aktuelle Haltestelle wird für die jeweils erste Abfahrt aus dem letzten zum
+Abrufzeitpunkt erreichten Stopover der zugehörigen `/trips/:id`-Antwort
+abgeleitet. Das Wetterpanel bleibt unverändert auf x=528..791. Beide Bereiche
+werden getrennt geclippt.
 
 Die Stop-Suche, gefilterte JSON-Auswertung, ISO-8601-Zeitumrechnung und
 Sortierung stammen aus `52-bvg-departure-eink`; dessen SSD1680/GxEPD2-Treiber
 und Partial-Refresh-Logik wurden ausdrücklich nicht übernommen. BVG und
-HomePilot werden jede Minute aktualisiert, OpenWeather weiterhin höchstens
-alle zehn Minuten. Auch dieses Projekt verwendet für Minutenaktualisierungen
+HomePilot laufen gemeinsam über genau einen Minutentimer; OpenWeather behält
+seinen unabhängigen 10-Minuten-Timer. Auch dieses Projekt verwendet für Minutenaktualisierungen
 den vollständigen Framebuffertransfer mit Fast-Update und keinen
 fensterbasierten Partial Refresh.
 

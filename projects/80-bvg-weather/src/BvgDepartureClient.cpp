@@ -204,7 +204,7 @@ int roundDelayMinutes(const int delaySeconds)
 }
 
 void insertSorted(
-    BvgDeparture output[BVG_MAX_DEPARTURES],
+    BvgDeparture output[BVG_DEPARTURES_PER_DIRECTION],
     uint8_t& count,
     const BvgDeparture& value
 )
@@ -218,22 +218,78 @@ void insertSorted(
             break;
         }
     }
-    if (position >= BVG_MAX_DEPARTURES)
+    if (position >= BVG_DEPARTURES_PER_DIRECTION)
     {
         return;
     }
-    const uint8_t last = count < BVG_MAX_DEPARTURES
+    const uint8_t last = count < BVG_DEPARTURES_PER_DIRECTION
         ? count
-        : BVG_MAX_DEPARTURES - 1;
+        : BVG_DEPARTURES_PER_DIRECTION - 1;
     for (uint8_t index = last; index > position; --index)
     {
         output[index] = output[index - 1];
     }
     output[position] = value;
-    if (count < BVG_MAX_DEPARTURES)
+    if (count < BVG_DEPARTURES_PER_DIRECTION)
     {
         ++count;
     }
+}
+
+String urlEncode(const String& value)
+{
+    constexpr char HEX_DIGITS[] = "0123456789ABCDEF";
+    String encoded;
+    encoded.reserve(value.length() * 3);
+    for (size_t index = 0; index < value.length(); ++index)
+    {
+        const uint8_t character = static_cast<uint8_t>(value[index]);
+        if ((character >= 'a' && character <= 'z') ||
+            (character >= 'A' && character <= 'Z') ||
+            (character >= '0' && character <= '9') ||
+            character == '-' || character == '_' || character == '.' ||
+            character == '~')
+        {
+            encoded += static_cast<char>(character);
+        }
+        else
+        {
+            encoded += '%';
+            encoded += HEX_DIGITS[character >> 4U];
+            encoded += HEX_DIGITS[character & 0x0FU];
+        }
+    }
+    return encoded;
+}
+
+String compactStopName(String name)
+{
+    name.replace(" (Berlin)", "");
+    return name;
+}
+
+void addDeparture(BvgDepartureBoard& board, const BvgDeparture& departure)
+{
+    uint8_t directionIndex = board.directionCount;
+    for (uint8_t index = 0; index < board.directionCount; ++index)
+    {
+        if (board.directions[index].direction == departure.direction)
+        {
+            directionIndex = index;
+            break;
+        }
+    }
+    if (directionIndex == board.directionCount)
+    {
+        if (board.directionCount >= BVG_MAX_DIRECTIONS)
+        {
+            return;
+        }
+        board.directions[directionIndex].direction = departure.direction;
+        ++board.directionCount;
+    }
+    BvgDirectionBoard& direction = board.directions[directionIndex];
+    insertSorted(direction.departures, direction.count, departure);
 }
 }
 
@@ -291,6 +347,7 @@ bool BvgDepartureClient::fetchDepartures(
 {
     JsonDocument filter;
     filter["departures"][0]["direction"] = true;
+    filter["departures"][0]["tripId"] = true;
     filter["departures"][0]["line"]["name"] = true;
     filter["departures"][0]["line"]["product"] = true;
     filter["departures"][0]["when"] = true;
@@ -299,7 +356,7 @@ bool BvgDepartureClient::fetchDepartures(
     filter["departures"][0]["cancelled"] = true;
 
     const String url = String(API_BASE_URL) + "/stops/" + stopId_ +
-        "/departures?results=8&duration=60&tram=true&suburban=false" 
+        "/departures?results=12&duration=60&tram=true&suburban=false"
         "&subway=false&bus=false&ferry=false&express=false&regional=false"
         "&remarks=false&linesOfStops=false&language=de&pretty=false";
     JsonDocument response;
@@ -325,16 +382,98 @@ bool BvgDepartureClient::fetchDepartures(
         BvgDeparture departure;
         departure.line = String(item["line"]["name"] | "?");
         departure.direction = String(item["direction"] | "UNBEKANNT");
+        departure.tripId = String(item["tripId"] | "");
         departure.when = parseApiTime(timestamp);
         departure.delayMinutes = roundDelayMinutes(item["delay"] | 0);
         if (departure.when >= now - 60)
         {
-            insertSorted(fresh.departures, fresh.count, departure);
+            addDeparture(fresh, departure);
+        }
+    }
+    for (uint8_t index = 0; index < fresh.directionCount; ++index)
+    {
+        BvgDirectionBoard& direction = fresh.directions[index];
+        if (direction.count == 0)
+        {
+            continue;
+        }
+        String positionError;
+        if (!fetchCurrentStop(direction.departures[0], positionError))
+        {
+            direction.departures[0].currentStop = "UNBEKANNT";
+            Serial.println("BVG POSITION: " + positionError);
         }
     }
     fresh.updatedAt = now;
     fresh.valid = true;
     result = fresh;
+    error = "";
+    return true;
+}
+
+bool BvgDepartureClient::fetchCurrentStop(
+    BvgDeparture& departure,
+    String& error
+)
+{
+    if (departure.tripId.isEmpty())
+    {
+        error = "Trip-ID fehlt";
+        return false;
+    }
+    JsonDocument filter;
+    filter["trip"]["stopovers"][0]["stop"]["name"] = true;
+    filter["trip"]["stopovers"][0]["arrival"] = true;
+    filter["trip"]["stopovers"][0]["departure"] = true;
+    filter["trip"]["stopovers"][0]["plannedArrival"] = true;
+    filter["trip"]["stopovers"][0]["plannedDeparture"] = true;
+
+    const String url = String(API_BASE_URL) + "/trips/" +
+        urlEncode(departure.tripId) + "?lineName=" +
+        urlEncode(departure.line) +
+        "&stopovers=true&remarks=false&polyline=false&language=de&pretty=false";
+    JsonDocument response;
+    if (!getJson(url, response, filter, "BVG: Fahrzeugposition abrufen", error))
+    {
+        return false;
+    }
+
+    const time_t now = time(nullptr);
+    String firstStop;
+    String latestStop;
+    time_t latestTime = 0;
+    for (JsonObject stopover : response["trip"]["stopovers"].as<JsonArray>())
+    {
+        const String name = compactStopName(
+            String(stopover["stop"]["name"] | "")
+        );
+        if (firstStop.isEmpty())
+        {
+            firstStop = name;
+        }
+        const char* timestamp = stopover["departure"];
+        if (timestamp == nullptr)
+        {
+            timestamp = stopover["arrival"];
+        }
+        if (timestamp == nullptr)
+        {
+            timestamp = stopover["plannedDeparture"];
+        }
+        if (timestamp == nullptr)
+        {
+            timestamp = stopover["plannedArrival"];
+        }
+        const time_t stopTime = parseApiTime(timestamp);
+        if (stopTime > 0 && stopTime <= now && stopTime >= latestTime)
+        {
+            latestTime = stopTime;
+            latestStop = name;
+        }
+    }
+    departure.currentStop = latestStop.isEmpty()
+        ? (firstStop.isEmpty() ? "UNBEKANNT" : "NOCH NICHT GESTARTET")
+        : latestStop;
     error = "";
     return true;
 }

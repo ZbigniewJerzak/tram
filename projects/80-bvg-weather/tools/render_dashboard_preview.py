@@ -155,47 +155,77 @@ def clip_text(font: Font, text: str, maximum_width: int) -> str:
     return text + "..."
 
 
-def draw_bvg_panel(image: Image.Image, large: Font) -> None:
+def draw_tram(image: Image.Image, center_x: int, top: int) -> None:
+    drawing = ImageDraw.Draw(image)
+    drawing.line((center_x - 8, top + 4, center_x, top), fill=0)
+    drawing.line((center_x, top, center_x + 8, top + 4), fill=0)
+    drawing.line((center_x, top, center_x, top + 6), fill=0)
+    drawing.rectangle((center_x - 14, top + 6, center_x + 14, top + 26), outline=0)
+    drawing.rectangle((center_x - 10, top + 9, center_x - 3, top + 16), outline=0)
+    drawing.rectangle((center_x + 2, top + 9, center_x + 9, top + 16), outline=0)
+    drawing.rectangle((center_x - 10, top + 21, center_x - 7, top + 23), fill=0)
+    drawing.rectangle((center_x + 7, top + 21, center_x + 10, top + 23), fill=0)
+    drawing.ellipse((center_x - 10, top + 27, center_x - 6, top + 31), fill=0)
+    drawing.ellipse((center_x + 6, top + 27, center_x + 10, top + 31), fill=0)
+    drawing.line((center_x - 13, top + 32, center_x + 13, top + 32), fill=0)
+
+
+def draw_departure_line(
+    image: Image.Image,
+    large: Font,
+    time_delay: str,
+    line: str,
+    countdown: str,
+    baseline: int,
+) -> None:
+    draw_text(image, large, time_delay, BVG_CONTENT_LEFT, baseline, 0, BVG_PANEL_WIDTH)
+    draw_tram(image, 171, baseline - 32)
+    draw_text(image, large, line, 192, baseline, 0, BVG_PANEL_WIDTH)
+    draw_right(
+        image,
+        large,
+        countdown,
+        BVG_CONTENT_RIGHT,
+        baseline,
+        0,
+        BVG_PANEL_WIDTH,
+    )
+
+
+def draw_bvg_panel(image: Image.Image, small: Font, large: Font) -> None:
     drawing = ImageDraw.Draw(image)
     drawing.rectangle((0, 0, BVG_PANEL_WIDTH, DISPLAY_HEIGHT - 1), outline=0)
     drawing.line((0, BVG_HEADER_BOTTOM, BVG_PANEL_WIDTH - 1, BVG_HEADER_BOTTOM), fill=0)
     drawing.line((0, BVG_FIRST_ROW_BOTTOM, BVG_PANEL_WIDTH - 1, BVG_FIRST_ROW_BOTTOM), fill=0)
     draw_text(image, large, "ERICH-BARON-WEG", BVG_CONTENT_LEFT, 34, 0, BVG_PANEL_WIDTH)
 
-    departures = (
-        ("16:47 +2  62", "5 MIN", "S MAHLSDORF"),
-        ("16:55 +0  62", "13 MIN", "WENDENSCHLOSS"),
+    directions = (
+        (
+            ("23:51 +0", "62", "2 MIN"),
+            "S MAHLSDORF (AKTUELL: ROSEGGERSTR.)",
+            ("00:11 +0", "62", "22 MIN"),
+        ),
+        (
+            ("23:53 +0", "62", "4 MIN"),
+            "S KÖPENICK (AKTUELL: BÜTOWER STR.)",
+            ("00:13 +0", "62", "24 MIN"),
+        ),
     )
-    for index, (main_text, countdown, direction) in enumerate(departures):
-        main_baseline = 85 + index * 114
-        destination_baseline = 132 + index * 114
+    for index, (first, information, second) in enumerate(directions):
+        first_baseline = 77 + index * 114
+        information_baseline = 102 + index * 114
+        second_baseline = 145 + index * 114
+        draw_departure_line(image, large, *first, first_baseline)
         draw_text(
             image,
-            large,
-            main_text,
+            small,
+            information,
             BVG_CONTENT_LEFT,
-            main_baseline,
+            information_baseline,
             0,
             BVG_PANEL_WIDTH,
         )
-        draw_right(
-            image,
-            large,
-            countdown,
-            BVG_CONTENT_RIGHT,
-            main_baseline,
-            0,
-            BVG_PANEL_WIDTH,
-        )
-        draw_text(
-            image,
-            large,
-            clip_text(large, direction, BVG_CONTENT_RIGHT - BVG_CONTENT_LEFT),
-            BVG_CONTENT_LEFT,
-            destination_baseline,
-            0,
-            BVG_PANEL_WIDTH,
-        )
+        draw_departure_line(image, large, *second, second_baseline)
 
 
 def forecast_temperature(font: Font, value: float) -> str:
@@ -344,7 +374,7 @@ def render(header_path: Path, output_path: Path, winter: bool = False) -> None:
     large = load_font(header, "Spleen16x32")
     image = Image.new("1", (DISPLAY_WIDTH, DISPLAY_HEIGHT), 1)
     drawing = ImageDraw.Draw(image)
-    draw_bvg_panel(image, large)
+    draw_bvg_panel(image, small, large)
     drawing.rectangle(
         (PANEL_LEFT, 0, DISPLAY_WIDTH - 1, DISPLAY_HEIGHT - 1),
         outline=0,

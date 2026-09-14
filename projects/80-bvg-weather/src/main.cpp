@@ -31,7 +31,7 @@ constexpr float LATITUDE = 52.482781F;
 constexpr float LONGITUDE = 13.603978F;
 constexpr unsigned long WIFI_TIMEOUT_MS = 30000UL;
 constexpr unsigned long TIME_TIMEOUT_MS = 25000UL;
-constexpr unsigned long LOCAL_INTERVAL_MS = 60UL * 1000UL;
+constexpr unsigned long MINUTE_INTERVAL_MS = 60UL * 1000UL;
 constexpr unsigned long OPENWEATHER_INTERVAL_MS = 10UL * 60UL * 1000UL;
 constexpr char BVG_STOP_SEARCH_TERM[] = "Erich-Baron-Weg";
 constexpr int16_t BVG_PANEL_WIDTH = 528;
@@ -89,7 +89,7 @@ bool haveLocalWeather = false;
 String bvgError;
 bool systemReady = false;
 bool timeReady = false;
-unsigned long lastLocalAttemptMs = 0;
+unsigned long lastMinuteCycleMs = 0;
 unsigned long lastOpenWeatherAttemptMs = 0;
 unsigned long lastTimeAttemptMs = 0;
 
@@ -330,19 +330,20 @@ String clockText(const time_t value)
     return output;
 }
 
-String clipLargeText(
+String clipText(
     SpleenCanvas& canvas,
+    const BitmapFont& font,
     String text,
     const int16_t maximumWidth
 )
 {
-    if (canvas.textWidth(Spleen16x32, text) <= maximumWidth)
+    if (canvas.textWidth(font, text) <= maximumWidth)
     {
         return text;
     }
     constexpr char ELLIPSIS[] = "...";
     while (!text.isEmpty() &&
-        canvas.textWidth(Spleen16x32, text + ELLIPSIS) > maximumWidth)
+        canvas.textWidth(font, text + ELLIPSIS) > maximumWidth)
     {
         int removeAt = text.length() - 1;
         while (removeAt > 0 &&
@@ -355,16 +356,34 @@ String clipLargeText(
     return text + ELLIPSIS;
 }
 
+void drawTramIcon(
+    SpleenCanvas& canvas,
+    const int16_t centerX,
+    const int16_t top
+)
+{
+    canvas.drawLine(centerX - 8, top + 4, centerX, top, COLOR_BLACK);
+    canvas.drawLine(centerX, top, centerX + 8, top + 4, COLOR_BLACK);
+    canvas.drawLine(centerX, top, centerX, top + 6, COLOR_BLACK);
+    canvas.drawRect(centerX - 14, top + 6, 29, 21, COLOR_BLACK);
+    canvas.drawRect(centerX - 10, top + 9, 8, 8, COLOR_BLACK);
+    canvas.drawRect(centerX + 2, top + 9, 8, 8, COLOR_BLACK);
+    canvas.fillRect(centerX - 10, top + 21, 4, 3, COLOR_BLACK);
+    canvas.fillRect(centerX + 7, top + 21, 4, 3, COLOR_BLACK);
+    canvas.fillCircle(centerX - 8, top + 29, 2, COLOR_BLACK);
+    canvas.fillCircle(centerX + 8, top + 29, 2, COLOR_BLACK);
+    canvas.drawLine(centerX - 13, top + 32, centerX + 13, top + 32, COLOR_BLACK);
+}
+
 String delayText(const int delayMinutes)
 {
     return String(delayMinutes >= 0 ? "+" : "") + String(delayMinutes);
 }
 
-void drawBvgDeparture(
+void drawBvgDepartureLine(
     SpleenCanvas& canvas,
     const BvgDeparture& departure,
     const int16_t mainBaseline,
-    const int16_t destinationBaseline,
     const time_t now
 )
 {
@@ -377,27 +396,57 @@ void drawBvgDeparture(
     const String countdown = String(remainingMinutes) + " MIN";
     canvas.drawText(
         Spleen16x32,
-        clockText(departure.when) + " " + delayText(departure.delayMinutes) +
-            "  " + departure.line,
+        clockText(departure.when) + " " + delayText(departure.delayMinutes),
         BVG_CONTENT_LEFT,
         mainBaseline
     );
+    drawTramIcon(canvas, 171, mainBaseline - 32);
+    canvas.drawText(Spleen16x32, departure.line, 192, mainBaseline);
     canvas.drawRightAlignedText(
         Spleen16x32,
         countdown,
         BVG_CONTENT_RIGHT,
         mainBaseline
     );
+}
+
+void drawBvgDirection(
+    SpleenCanvas& canvas,
+    const BvgDirectionBoard& direction,
+    const int16_t firstBaseline,
+    const int16_t informationBaseline,
+    const int16_t secondBaseline,
+    const time_t now
+)
+{
+    if (direction.count == 0)
+    {
+        canvas.drawText(Spleen16x32, "--:--", BVG_CONTENT_LEFT, firstBaseline);
+        return;
+    }
+    drawBvgDepartureLine(canvas, direction.departures[0], firstBaseline, now);
+    const String currentStop = direction.departures[0].currentStop.isEmpty()
+        ? "UNBEKANNT"
+        : direction.departures[0].currentStop;
     canvas.drawText(
-        Spleen16x32,
-        clipLargeText(
+        Spleen8x16,
+        clipText(
             canvas,
-            departure.direction,
+            Spleen8x16,
+            direction.direction + " (AKTUELL: " + currentStop + ")",
             BVG_CONTENT_RIGHT - BVG_CONTENT_LEFT
         ),
         BVG_CONTENT_LEFT,
-        destinationBaseline
+        informationBaseline
     );
+    if (direction.count > 1)
+    {
+        drawBvgDepartureLine(canvas, direction.departures[1], secondBaseline, now);
+    }
+    else
+    {
+        canvas.drawText(Spleen16x32, "--:--", BVG_CONTENT_LEFT, secondBaseline);
+    }
 }
 
 void drawBvgPanel(SpleenCanvas& canvas, const time_t now)
@@ -426,8 +475,9 @@ void drawBvgPanel(SpleenCanvas& canvas, const time_t now)
         canvas.drawText(Spleen16x32, "BVG FEHLER", BVG_CONTENT_LEFT, 91);
         canvas.drawText(
             Spleen16x32,
-            clipLargeText(
+            clipText(
                 canvas,
+                Spleen16x32,
                 bvgError.isEmpty() ? "KEINE DATEN" : bvgError,
                 BVG_CONTENT_RIGHT - BVG_CONTENT_LEFT
             ),
@@ -436,7 +486,7 @@ void drawBvgPanel(SpleenCanvas& canvas, const time_t now)
         );
         return;
     }
-    if (departureBoard.count == 0)
+    if (departureBoard.directionCount == 0)
     {
         canvas.drawText(
             Spleen16x32,
@@ -446,20 +496,22 @@ void drawBvgPanel(SpleenCanvas& canvas, const time_t now)
         );
         return;
     }
-    drawBvgDeparture(
+    drawBvgDirection(
         canvas,
-        departureBoard.departures[0],
-        85,
-        132,
+        departureBoard.directions[0],
+        77,
+        102,
+        145,
         now
     );
-    if (departureBoard.count > 1)
+    if (departureBoard.directionCount > 1)
     {
-        drawBvgDeparture(
+        drawBvgDirection(
             canvas,
-            departureBoard.departures[1],
-            199,
-            246,
+            departureBoard.directions[1],
+            191,
+            216,
+            259,
             now
         );
     }
@@ -854,7 +906,6 @@ void updateLocalWeather()
         localError = error;
         Serial.println("FEHLER: " + error);
     }
-    lastLocalAttemptMs = millis();
 }
 
 void updateOpenWeather()
@@ -888,17 +939,33 @@ void updateBvg()
     {
         departureBoard = fresh;
         bvgError = "";
-        Serial.printf("BVG: %u Abfahrten geladen\n", departureBoard.count);
-        for (uint8_t index = 0; index < departureBoard.count; ++index)
+        Serial.printf(
+            "BVG: %u Richtungen geladen\n",
+            departureBoard.directionCount
+        );
+        for (uint8_t directionIndex = 0;
+            directionIndex < departureBoard.directionCount;
+            ++directionIndex)
         {
-            const BvgDeparture& departure = departureBoard.departures[index];
-            Serial.printf(
-                "BVG: %s %+d Tram %s -> %s\n",
-                clockText(departure.when).c_str(),
-                departure.delayMinutes,
-                departure.line.c_str(),
-                departure.direction.c_str()
-            );
+            const BvgDirectionBoard& direction =
+                departureBoard.directions[directionIndex];
+            for (uint8_t departureIndex = 0;
+                departureIndex < direction.count;
+                ++departureIndex)
+            {
+                const BvgDeparture& departure =
+                    direction.departures[departureIndex];
+                Serial.printf(
+                    "BVG: %s %+d Tram %s -> %s, aktuell %s\n",
+                    clockText(departure.when).c_str(),
+                    departure.delayMinutes,
+                    departure.line.c_str(),
+                    departure.direction.c_str(),
+                    departureIndex == 0
+                        ? departure.currentStop.c_str()
+                        : "-"
+                );
+            }
         }
     }
     else
@@ -914,7 +981,7 @@ void updateAndRender(const bool includeOpenWeather)
     {
         // Ein fehlgeschlagener Wiederaufbau darf keine enge Schleife mit
         // wiederholten vollständigen E-Paper-Aktualisierungen erzeugen.
-        lastLocalAttemptMs = millis();
+        lastMinuteCycleMs = millis();
         if (includeOpenWeather)
         {
             lastOpenWeatherAttemptMs = millis();
@@ -928,6 +995,7 @@ void updateAndRender(const bool includeOpenWeather)
 
     updateBvg();
     updateLocalWeather();
+    lastMinuteCycleMs = millis();
     if (includeOpenWeather)
     {
         updateOpenWeather();
@@ -984,7 +1052,7 @@ void loop()
     const unsigned long nowMs = millis();
     if (!timeReady)
     {
-        if (nowMs - lastTimeAttemptMs < LOCAL_INTERVAL_MS)
+        if (nowMs - lastTimeAttemptMs < MINUTE_INTERVAL_MS)
         {
             delay(100);
             return;
@@ -1006,7 +1074,7 @@ void loop()
         return;
     }
 
-    if (nowMs - lastLocalAttemptMs < LOCAL_INTERVAL_MS)
+    if (nowMs - lastMinuteCycleMs < MINUTE_INTERVAL_MS)
     {
         delay(100);
         return;

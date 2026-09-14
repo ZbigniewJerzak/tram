@@ -3,22 +3,24 @@
 Kombiniertes BVG- und Wetter-Dashboard für das Elecrow CrowPanel ESP32-S3
 5,79-Zoll E-Paper HMI. Das Projekt ist eine vollständige Kopie des
 funktionierenden Stands `71-weather` und ergänzt auf den zuvor freien linken
-zwei Dritteln die nächsten beiden Tram-Abfahrten an der Haltestelle
-Erich-Baron-Weg.
+zwei Dritteln Tram-Abfahrten an der Haltestelle Erich-Baron-Weg.
 
 ## Bildschirmaufteilung
 
 | Bereich | Pixel | Inhalt |
 |---|---:|---|
-| BVG links | x=0–527 | Erich-Baron-Weg und zwei Tram-Abfahrten |
+| BVG links | x=0–527 | Erich-Baron-Weg; zwei Abfahrten je Richtung |
 | Wetter rechts | x=528–791 | unverändertes Wetterpanel aus Projekt 71 |
 
-Das BVG-Panel verwendet durchgehend den nativen Spleen-Font in 16×32 Pixeln.
-Jede Abfahrt zeigt in der ersten Zeile die erwartete Uhrzeit, Verspätung,
-Linie und rechtsbündig die verbleibenden Minuten. In der zweiten Zeile steht
-das Fahrtziel. Unerwartet lange Ziele werden UTF-8-sicher gekürzt und mit
-`...` abgeschlossen. Die beiden Panels besitzen getrennte Clipping-Rechtecke,
-damit kein Text über die gemeinsame Grenze läuft.
+Das BVG-Panel besitzt einen Block für jede der beiden Fahrtrichtungen. Die
+erste und zweite Abfahrt jeder Richtung erscheinen in Spleen 16×32 mit
+erwarteter Uhrzeit, Verspätung, Tram-Piktogramm, Linie und rechtsbündigem
+Countdown. Zwischen diesen beiden Zeilen stehen Ziel und aktuelle
+Fahrzeughaltestelle in Spleen 8×16, beispielsweise
+`S MAHLSDORF (AKTUELL: ROSEGGERSTR.)`. Unerwartet lange Angaben werden
+UTF-8-sicher gekürzt und mit `...` abgeschlossen. Die beiden Panels besitzen
+getrennte Clipping-Rechtecke, damit kein Text über die gemeinsame Grenze
+läuft.
 
 Die Vorschau wird direkt aus den tatsächlich einkompilierten Bitmapdaten in
 `src/SpleenFontData.h` erzeugt:
@@ -44,9 +46,19 @@ https://v6.bvg.transport.rest
 Beim ersten Abruf sucht das Modul nach `Erich-Baron-Weg` und speichert die
 gefundene Stop-ID im RAM. Danach werden nur Tram-Abfahrten für die nächsten
 60 Minuten abgefragt. Ausgefallene Fahrten werden verworfen; gültige Fahrten
-werden nach der erwarteten Zeit sortiert. Es werden höchstens zwei Abfahrten
-angezeigt. ISO-8601-Zeitstempel einschließlich explizitem UTC-Offset werden
-in Unix-Zeit umgerechnet.
+werden nach Fahrtrichtung gruppiert und innerhalb jeder Richtung nach der
+erwarteten Zeit sortiert. Es werden höchstens zwei Richtungen mit jeweils
+zwei Abfahrten angezeigt. ISO-8601-Zeitstempel einschließlich explizitem
+UTC-Offset werden in Unix-Zeit umgerechnet.
+
+Für die jeweils erste Abfahrt einer Richtung ruft das Modul anhand von
+`tripId` die Route `/trips/:id` auf. Als aktuelle Haltestelle gilt der letzte
+Stopover, dessen reale Ankunfts- oder Abfahrtszeit zum Abrufzeitpunkt erreicht
+ist; fehlen Echtzeitwerte, dienen die Planzeiten als Rückfall. Vor dem
+Fahrtbeginn erscheint `NOCH NICHT GESTARTET`, bei fehlenden Tripdaten
+`UNBEKANNT`. BVG stellt eine geographische Fahrzeugposition nicht zuverlässig
+für jede Abfahrt bereit, deshalb ist diese Stopover-Angabe die robustere
+Darstellung.
 
 Bei einem vorübergehenden HTTP-Fehler gibt es bis zu drei Versuche mit 0, 2
 und 6 Sekunden Wartezeit. Ein Fehler verwirft bereits erfolgreich geladene
@@ -58,7 +70,7 @@ Status, Dauer und Versuchsnummer werden seriell protokolliert. Wie im
 
 | Zyklus | Intervall | Aktion |
 |---|---:|---|
-| BVG und HomePilot | 60 Sekunden | Abfahrten, Countdown, Lokalsensor und Uhrzeit aktualisieren; Vollbild-Fast-Update |
+| Gemeinsamer Minutenzyklus | 60 Sekunden | BVG-Abfahrten, Fahrzeughalte, Countdown, HomePilot und Uhrzeit gemeinsam aktualisieren; Vollbild-Fast-Update |
 | OpenWeather | 10 Minuten | Prognose aktualisieren und bestätigten vollständigen Löschzyklus ausführen |
 
 Das Projekt verwendet ausdrücklich keinen fensterbasierten Partial Refresh.
